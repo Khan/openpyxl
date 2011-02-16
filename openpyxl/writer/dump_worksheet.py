@@ -36,6 +36,9 @@ from openpyxl.shared.date_time import SharedDate
 from openpyxl.shared.ooxml import MAX_COLUMN, MAX_ROW
 from tempfile import NamedTemporaryFile
 from openpyxl.writer.excel import ExcelWriter
+from openpyxl.writer.strings import write_string_table
+from openpyxl.writer.styles import StyleWriter
+from openpyxl.style import Style, NumberFormat
 
 from openpyxl.shared.ooxml import ARC_SHARED_STRINGS, ARC_CONTENT_TYPES, \
         ARC_ROOT_RELS, ARC_WORKBOOK_RELS, ARC_APP, ARC_CORE, ARC_THEME, \
@@ -44,12 +47,14 @@ from openpyxl.shared.ooxml import ARC_SHARED_STRINGS, ARC_CONTENT_TYPES, \
 
 STYLES = {'datetime' : {'type':Cell.TYPE_NUMERIC,
                         'style':'1'},
-          'string':{'type':Cell.TYPE_INLINE,
+          'string':{'type':Cell.TYPE_STRING,
                     'style':'0'},
           'numeric':{'type':Cell.TYPE_NUMERIC,
                      'style':'0'}
         }
 
+DATETIME_STYLE = Style()
+DATETIME_STYLE.number_format.format_code = NumberFormat.FORMAT_DATE_YYYYMMDD2 
 BOUNDING_BOX_PLACEHOLDER = 'A1:%s%d' % (get_column_letter(MAX_COLUMN), MAX_ROW)
 
 class DumpWorksheet(Worksheet):
@@ -66,6 +71,7 @@ class DumpWorksheet(Worksheet):
         self.title = 'Sheet'
 
         self._shared_date = SharedDate()
+        self._string_builder = self._parent.strings_table_builder
 
         self.write_header()
 
@@ -83,8 +89,8 @@ class DumpWorksheet(Worksheet):
                 'xmlns:r': 'http://schemas.openxmlformats.org/officeDocument/2006/relationships'})
         start_tag(doc, 'sheetPr')
         tag(doc, 'outlinePr',
-                {'summaryBelow': '0', 
-                'summaryRight': '0'})
+                {'summaryBelow': '1', 
+                'summaryRight': '1'})
         end_tag(doc, 'sheetPr')
         tag(doc, 'dimension', {'ref': '%s' % BOUNDING_BOX_PLACEHOLDER})
         start_tag(doc, 'sheetViews')
@@ -94,11 +100,14 @@ class DumpWorksheet(Worksheet):
         end_tag(doc, 'sheetView')
         end_tag(doc, 'sheetViews')
         tag(doc, 'sheetFormatPr', {'defaultRowHeight': '15'})
+        start_tag(doc, 'sheetData')
 
     def close(self):
 
-        end_tag(self.doc, 'worksheet')
-        self.doc.endDocument()
+        doc = self.doc
+        end_tag(doc, 'sheetData')
+        end_tag(doc, 'worksheet')
+        doc.endDocument()
         self._fileobj.close()
             
     def append(self, row):
@@ -127,11 +136,12 @@ class DumpWorksheet(Worksheet):
             elif isinstance(cell, (datetime.datetime, datetime.date)):
                 dtype = 'datetime'
                 cell = self._shared_date.datetime_to_julian(cell)
+                attributes['s'] = STYLES[dtype]['style']
             else:
                 dtype = 'string'
+                cell = self._string_builder.add(cell)
 
             attributes['t'] = STYLES[dtype]['type']
-            attributes['s'] = STYLES[dtype]['style']
 
             start_tag(doc, 'c', attributes)
 
@@ -152,12 +162,21 @@ def save_dump(workbook, filename):
     writer.save(filename)
     return True
 
-
 class ExcelDumpWriter(ExcelWriter):
+
+    def __init__(self, workbook):
+
+        self.workbook = workbook
+        self.style_writer = StyleDumpWriter(workbook)
+        self.style_writer._style_list.append(DATETIME_STYLE)
 
     def _write_string_table(self, archive):
 
-        return {}
+        shared_string_table = self.workbook.strings_table_builder.get_table()
+        archive.writestr(ARC_SHARED_STRINGS,
+                write_string_table(shared_string_table))
+
+        return shared_string_table
 
     def _write_worksheets(self, archive, shared_string_table, style_writer):
 
@@ -165,3 +184,10 @@ class ExcelDumpWriter(ExcelWriter):
             sheet.close()
             archive.write(sheet.filename, PACKAGE_WORKSHEETS + '/sheet%d.xml' % (i + 1))
             os.remove(sheet.filename)
+
+
+class StyleDumpWriter(StyleWriter):
+
+    def _get_style_list(self, workbook):
+        return []
+        
