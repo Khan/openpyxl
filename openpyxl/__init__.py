@@ -31,13 +31,11 @@ from openpyxl import namedrange
 from openpyxl import style
 from openpyxl import workbook
 from openpyxl import worksheet
-from openpyxl import reader
 from openpyxl import shared
 from openpyxl import writer
 
 # shortcuts
 from openpyxl.workbook import Workbook
-from openpyxl.reader.excel import load_workbook
 
 # constants
 
@@ -54,4 +52,4 @@ __maintainer_email__ = 'openpyxl-users@googlegroups.com'
 __url__ = 'http://openpyxl.readthedocs.org'
 __downloadUrl__ = "http://bitbucket.org/ericgazoni/openpyxl/downloads"
 
-__all__ = ('reader', 'shared', 'writer',)
+__all__ = ('shared', 'writer',)
